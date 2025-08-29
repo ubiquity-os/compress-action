@@ -12,7 +12,7 @@ inputs:
   mode:
     description: "Operation: compress or decompress."
     required: false
-    default: "compress"
+    default: "decompress"
   algorithm:
     description: "Compression algorithm: brotli | gzip | deflate | deflate-raw"
     required: false
@@ -20,11 +20,11 @@ inputs:
   input_encoding:
     description: "Encoding of provided data (utf8 | base64). For decompress mode base64 is typical."
     required: false
-    default: "utf8"
+    default: "base64"
   output_encoding:
     description: "Encoding for result string (utf8 | base64). For compress mode base64 is recommended."
     required: false
-    default: "base64"
+    default: "utf8"
 
 outputs:
   result:
@@ -47,9 +47,9 @@ runs:
         result-encoding: string
         script: |
           const z = require('zlib');
-          const mode = (process.env.MODE || 'compress').toLowerCase();
+          const mode = (process.env.MODE || 'decompress').toLowerCase();
           const algorithm = (process.env.ALGORITHM || 'brotli').toLowerCase();
-          const inputEncoding = (process.env.INPUT_ENCODING || 'utf8').toLowerCase();
+          const inputEncoding = (process.env.INPUT_ENCODING || (mode === 'compress' ? 'utf8' : 'base64')).toLowerCase();
           const outputEncoding = (process.env.OUTPUT_ENCODING || (mode === 'compress' ? 'base64' : 'utf8')).toLowerCase();
 
           if (!['compress','decompress'].includes(mode)) {
