@@ -1,0 +1,97 @@
+name: "Compression Action"
+description: "Compress or decompress a string using Node.js zlib."
+author: ""
+branding:
+  icon: "package"
+  color: "purple"
+
+inputs:
+  data:
+    description: "The string to compress or decompress. For decompress mode this should normally be base64 unless input_encoding is overridden."
+    required: true
+  mode:
+    description: "Operation: compress or decompress."
+    required: false
+    default: "decompress"
+  algorithm:
+    description: "Compression algorithm: brotli | gzip | deflate | deflate-raw"
+    required: false
+    default: "brotli"
+  input_encoding:
+    description: "Encoding of provided data (utf8 | base64). For decompress mode base64 is typical."
+    required: false
+    default: "base64"
+  output_encoding:
+    description: "Encoding for result string (utf8 | base64). For compress mode base64 is recommended."
+    required: false
+    default: "utf8"
+
+outputs:
+  result:
+    description: "The resulting transformed string"
+    value: ${{ steps.compress.outputs.result }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Run compression
+      id: compress
+      uses: actions/github-script@v7
+      env:
+        MODE: ${{ inputs.mode }}
+        ALGORITHM: ${{ inputs.algorithm }}
+        DATA: ${{ inputs.data }}
+        INPUT_ENCODING: ${{ inputs.input_encoding }}
+        OUTPUT_ENCODING: ${{ inputs.output_encoding }}
+      with:
+        result-encoding: string
+        script: |
+          const z = require('zlib');
+          const mode = (process.env.MODE || 'decompress').toLowerCase();
+          const algorithm = (process.env.ALGORITHM || 'brotli').toLowerCase();
+          const inputEncoding = (process.env.INPUT_ENCODING || (mode === 'compress' ? 'utf8' : 'base64')).toLowerCase();
+          const outputEncoding = (process.env.OUTPUT_ENCODING || (mode === 'compress' ? 'base64' : 'utf8')).toLowerCase();
+
+          if (!['compress','decompress'].includes(mode)) {
+            return core.setFailed(`Invalid mode '${mode}'.`);
+          }
+          if (!['brotli','gzip','deflate','deflate-raw'].includes(algorithm)) {
+            return core.setFailed(`Unsupported algorithm '${algorithm}'.`);
+          }
+          if (!['utf8','base64'].includes(inputEncoding)) {
+            return core.setFailed(`Unsupported input_encoding '${inputEncoding}'.`);
+          }
+          if (!['utf8','base64'].includes(outputEncoding)) {
+            return core.setFailed(`Unsupported output_encoding '${outputEncoding}'.`);
+          }
+
+          const raw = process.env.DATA || '';
+          let inputBuffer;
+          try { 
+            inputBuffer = Buffer.from(raw, inputEncoding === 'binary' ? 'latin1' : inputEncoding); 
+          }
+          catch (e) { 
+            return core.setFailed(`Failed to decode input data: ${e.message}`); 
+          }
+
+          const compressFns = {
+            brotli: { compress: z.brotliCompressSync, decompress: z.brotliDecompressSync },
+            gzip: { compress: z.gzipSync, decompress: z.gunzipSync },
+            deflate: { compress: z.deflateSync, decompress: z.inflateSync },
+            'deflate-raw': { compress: z.deflateRawSync, decompress: z.inflateRawSync }
+          };
+
+          let resultBuffer;
+          try {
+            if (mode === 'compress') {
+              resultBuffer = compressFns[algorithm].compress(inputBuffer);
+            } else {
+              resultBuffer = compressFns[algorithm].decompress(inputBuffer);
+            }
+          } catch (e) {
+            return core.setFailed(`${algorithm} ${mode} failed: ${e.message}`);
+          }
+
+          const resultString = resultBuffer.toString(outputEncoding);
+          core.setOutput('result', resultString);
+          return resultString;
